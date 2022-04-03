@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <math.h>
+#include <stdio.h>
 
 typedef int8_t int8;
 typedef int16_t int16;
@@ -129,6 +130,33 @@ typedef struct game_input_t
 
 global_variable bool32 g_running;
 global_variable win32_offscreen_buffer_t g_backbuffer;
+global_variable int64 GlobalPerfCountFrequency;
+
+inline real32
+Win32GetSecondsElapsed(LARGE_INTEGER Start, LARGE_INTEGER End)
+{
+    real32 Result = ((real32)(End.QuadPart - Start.QuadPart) /
+                     (real32)GlobalPerfCountFrequency);
+    return(Result);
+}
+
+inline LARGE_INTEGER
+Win32GetWallClock(void)
+{
+    LARGE_INTEGER Result;
+    QueryPerformanceCounter(&Result);
+    return(Result);
+}
+
+internal void
+Win32ProcessKeyboardMessage(game_button_state_t *NewState, bool32 IsDown)
+{
+    if(NewState->EndedDown != IsDown)
+    {
+        NewState->EndedDown = IsDown;
+        ++NewState->HalfTransitionCount;
+    }
+}
 
 internal void
 win32_process_pending_messages(win32_state_t *state, game_controller_input_t *keyboard_controller)
@@ -142,6 +170,70 @@ win32_process_pending_messages(win32_state_t *state, game_controller_input_t *ke
             {
                 g_running = false;
             } break;
+            case WM_SYSKEYDOWN:
+            case WM_SYSKEYUP:
+            case WM_KEYDOWN:
+            case WM_KEYUP:
+            {
+                uint32 VKCode = (uint32)message.wParam;
+
+                // NOTE(casey): Since we are comparing WasDown to IsDown,
+                // we MUST use == and != to convert these bit tests to actual
+                // 0 or 1 values.
+                bool32 WasDown = ((message.lParam & (1 << 30)) != 0);
+                bool32 IsDown = ((message.lParam & (1 << 31)) == 0);
+                if(WasDown != IsDown)
+                {
+                    if(VKCode == 'W')
+                    {
+                        Win32ProcessKeyboardMessage(&keyboard_controller->MoveUp, IsDown);
+                    }
+                    else if(VKCode == 'A')
+                    {
+                        Win32ProcessKeyboardMessage(&keyboard_controller->MoveLeft, IsDown);
+                    }
+                    else if(VKCode == 'S')
+                    {
+                        Win32ProcessKeyboardMessage(&keyboard_controller->MoveDown, IsDown);
+                    }
+                    else if(VKCode == 'D')
+                    {
+                        Win32ProcessKeyboardMessage(&keyboard_controller->MoveRight, IsDown);
+                    }
+                    else if(VKCode == 'Q')
+                    {
+                        Win32ProcessKeyboardMessage(&keyboard_controller->LeftShoulder, IsDown);
+                    }
+                    else if(VKCode == 'E')
+                    {
+                        Win32ProcessKeyboardMessage(&keyboard_controller->RightShoulder, IsDown);
+                    }
+                    else if(VKCode == VK_UP)
+                    {
+                        Win32ProcessKeyboardMessage(&keyboard_controller->ActionUp, IsDown);
+                    }
+                    else if(VKCode == VK_LEFT)
+                    {
+                        Win32ProcessKeyboardMessage(&keyboard_controller->ActionLeft, IsDown);
+                    }
+                    else if(VKCode == VK_DOWN)
+                    {
+                        Win32ProcessKeyboardMessage(&keyboard_controller->ActionDown, IsDown);
+                    }
+                    else if(VKCode == VK_RIGHT)
+                    {
+                        Win32ProcessKeyboardMessage(&keyboard_controller->ActionRight, IsDown);
+                    }
+                    else if(VKCode == VK_ESCAPE)
+                    {
+                        Win32ProcessKeyboardMessage(&keyboard_controller->Back, IsDown);
+                    }
+                    else if(VKCode == VK_SPACE)
+                    {
+                        Win32ProcessKeyboardMessage(&keyboard_controller->Start, IsDown);
+                    }
+                }
+            }
             default:
             {
                 TranslateMessage(&message);
@@ -346,6 +438,16 @@ WinMain(HINSTANCE Instance,
         int ShowCode)
 {
     win32_state_t win32_state = {};
+
+    LARGE_INTEGER PerfCountFrequencyResult;
+    QueryPerformanceFrequency(&PerfCountFrequencyResult);
+    GlobalPerfCountFrequency = PerfCountFrequencyResult.QuadPart;
+
+    // NOTE(casey): Set the Windows scheduler granularity to 1ms
+    // so that our Sleep() can be more granular.
+    UINT DesiredSchedulerMS = 1;
+    bool32 SleepIsGranular = (timeBeginPeriod(DesiredSchedulerMS) == TIMERR_NOERROR);
+
     win32_resize_dib_section(&g_backbuffer, 960, 540);
 
     WNDCLASSA window_class = {};
@@ -373,6 +475,10 @@ WinMain(HINSTANCE Instance,
                 0);
         if (window)
         {
+            int MonitorRefreshHz = 60;
+            real32 GameUpdateHz = (MonitorRefreshHz / 1.0f);
+            real32 TargetSecondsPerFrame = 1.0f / (real32)GameUpdateHz;
+
             g_running = true;
             LPVOID base_address = 0;
 
@@ -393,11 +499,19 @@ WinMain(HINSTANCE Instance,
                 game_input_t* new_input = &input[0];
                 game_input_t* old_input = &input[1];
 
-               // LARGE_INTEGER LAST_COUNTER = WIN32GETWALLCLOCK();
-               //LARGE_INTEGER FLIP_WALL_CLOCK = WIN32GETWALLCLOCK();
+                LARGE_INTEGER LastCounter = Win32GetWallClock();
+                LARGE_INTEGER FlipWallClock = Win32GetWallClock();
+
+                uint64 LastCycleCount = __rdtsc();
+
+                v2_t player_pos = {(real32)g_backbuffer.width/2, (real32)g_backbuffer.height/2};
+                int32 player_width = 40;
+                real32 player_move_speed = 200.0f;
 
                 while(g_running)
                 {
+                    new_input->dtForFrame = TargetSecondsPerFrame;
+
                     game_controller_input_t* old_keyboard_controller = get_controller(old_input,  0);
                     game_controller_input_t* new_keyboard_controller = get_controller(new_input,  0);
 
@@ -414,10 +528,66 @@ WinMain(HINSTANCE Instance,
                     win32_process_pending_messages(&win32_state, new_keyboard_controller);
 
                     // game update and render
-                    v2_t min = {0, 50};
-                    v2_t max = {100, 100};
+                    v2_t zero_vec = {0.0f, 0.0f};
+                    v2_t wh_vec = {(real32)g_backbuffer.width, (real32)g_backbuffer.height};
+                    draw_rectangle(&g_backbuffer, zero_vec, wh_vec, 0.0f, 0.0f, 0.0f);
+
+                    if (new_keyboard_controller->MoveRight.EndedDown)
+                        player_pos.x+=player_move_speed*new_input->dtForFrame;;
+                    if (new_keyboard_controller->MoveLeft.EndedDown)
+                        player_pos.x-=player_move_speed*new_input->dtForFrame;
+                    if (new_keyboard_controller->MoveUp.EndedDown)
+                        player_pos.y-=player_move_speed*new_input->dtForFrame;
+                    if (new_keyboard_controller->MoveDown.EndedDown)
+                        player_pos.y+=player_move_speed*new_input->dtForFrame;
+
+                    v2_t min = {player_pos.x - (player_width*0.5f), player_pos.y - (player_width*0.5f)};
+                    v2_t max = {player_pos.x + (player_width*0.5f), player_pos.y + (player_width*0.5f)};
+/*
+                    min.x = (min.x*cosf(1.0f)) - (min.y*sinf(1.0f));
+                    min.y = (min.x*sinf(1.0f)) + (min.y*cosf(1.0f));
+                    max.x = (max.x*cosf(1.0f)) - (max.y*sinf(1.0f));
+                    max.y = (max.x*sinf(1.0f)) + (max.y*cosf(1.0f));
+*/
+
                     real32 gray = 0.5f;
                     draw_rectangle(&g_backbuffer, min, max, gray, gray, gray);
+                    /////
+
+                    LARGE_INTEGER WorkCounter = Win32GetWallClock();
+                    real32 WorkSecondsElapsed = Win32GetSecondsElapsed(LastCounter, WorkCounter);
+
+                    real32 SecondsElapsedForFrame = WorkSecondsElapsed;
+                    if(SecondsElapsedForFrame < TargetSecondsPerFrame)
+                    {
+                        if(SleepIsGranular)
+                        {
+                            DWORD SleepMS = (DWORD)(1000.0f * (TargetSecondsPerFrame -
+                                                               SecondsElapsedForFrame));
+                            if(SleepMS > 0)
+                            {
+                                Sleep(SleepMS);
+                            }
+                        }
+
+                        real32 TestSecondsElapsedForFrame = Win32GetSecondsElapsed(LastCounter,
+                                                                                   Win32GetWallClock());
+                        if(TestSecondsElapsedForFrame < TargetSecondsPerFrame)
+                        {
+                            // TODO(casey): LOG MISSED SLEEP HERE
+                        }
+
+                        while(SecondsElapsedForFrame < TargetSecondsPerFrame)
+                        {
+                            SecondsElapsedForFrame = Win32GetSecondsElapsed(LastCounter,
+                                                                            Win32GetWallClock());
+                        }
+                    }
+                    LARGE_INTEGER EndCounter = Win32GetWallClock();
+                    real32 MSPerFrame = 1000.0f*Win32GetSecondsElapsed(LastCounter, EndCounter);
+                    LastCounter = EndCounter;
+
+                    FlipWallClock = Win32GetWallClock();
 
                     win32_window_dimension_t dimension = win32_get_window_dimension(window);
                     HDC device_context = GetDC(window);
