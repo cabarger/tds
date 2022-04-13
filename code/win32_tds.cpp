@@ -26,7 +26,6 @@ typedef double real64;
 #define global_variable static
 
 #if TDS_SLOW
-// TODO(casey): Complete assertion macro - don't worry everyone!
 #define assert(Expression) if(!(Expression)) {*(int *)0 = 0;}
 #else
 #define assert(Expression)
@@ -38,7 +37,6 @@ typedef double real64;
 #define terabytes(value) (gigabytes(value)*1024LL)
 
 #define array_count(Array) (sizeof(Array) / sizeof((Array)[0]))
-// TODO(casey): swap, min, max ... macros???
 
 #include <windows.h>
 
@@ -141,11 +139,11 @@ Win32GetSecondsElapsed(LARGE_INTEGER Start, LARGE_INTEGER End)
 }
 
 inline LARGE_INTEGER
-Win32GetWallClock(void)
+win32_get_wall_clock(void)
 {
-    LARGE_INTEGER Result;
-    QueryPerformanceCounter(&Result);
-    return(Result);
+    LARGE_INTEGER result;
+    QueryPerformanceCounter(&result);
+    return(result);
 }
 
 internal void
@@ -227,6 +225,7 @@ win32_process_pending_messages(win32_state_t *state, game_controller_input_t *ke
                     else if(VKCode == VK_ESCAPE)
                     {
                         Win32ProcessKeyboardMessage(&keyboard_controller->Back, IsDown);
+                        g_running = false;
                     }
                     else if(VKCode == VK_SPACE)
                     {
@@ -283,8 +282,6 @@ internal void
 win32_display_buffer_in_window(win32_offscreen_buffer_t *Buffer,
                            HDC DeviceContext, int WindowWidth, int WindowHeight)
 {
-    // TODO(casey): Centering / black bars?
-
     if((WindowWidth >= Buffer->width*2) &&
        (WindowHeight >= Buffer->height*2))
     {
@@ -300,10 +297,10 @@ win32_display_buffer_in_window(win32_offscreen_buffer_t *Buffer,
         int OffsetX = 10;
         int OffsetY = 10;
 
-        PatBlt(DeviceContext, 0, 0, WindowWidth, OffsetY, BLACKNESS);
-        PatBlt(DeviceContext, 0, OffsetY + Buffer->height, WindowWidth, WindowHeight, BLACKNESS);
-        PatBlt(DeviceContext, 0, 0, OffsetX, WindowHeight, BLACKNESS);
-        PatBlt(DeviceContext, OffsetX + Buffer->width, 0, WindowWidth, WindowHeight, BLACKNESS);
+        PatBlt(DeviceContext, 0, 0, WindowWidth, OffsetY, WHITENESS);
+        PatBlt(DeviceContext, 0, OffsetY + Buffer->height, WindowWidth, WindowHeight, WHITENESS);
+        PatBlt(DeviceContext, 0, 0, OffsetX, WindowHeight, WHITENESS);
+        PatBlt(DeviceContext, OffsetX + Buffer->width, 0, WindowWidth, WindowHeight, WHITENESS);
 
         // NOTE(casey): For prototyping purposes, we're going to always blit
         // 1-to-1 pixels to make sure we don't introduce artifacts with
@@ -357,7 +354,7 @@ inline game_controller_input_t *get_controller(game_input_t *input, int unsigned
     return(result);
 }
 
-union v2_t
+union vec2_t
 {
     struct
     {
@@ -367,50 +364,100 @@ union v2_t
 };
 
 inline int32
-RoundReal32ToInt32(real32 Real32)
+roundReal32ToInt32(real32 Real32)
 {
     int32 Result = (int32)roundf(Real32);
     return(Result);
 }
 
 inline uint32
-RoundReal32ToUInt32(real32 Real32)
+roundReal32ToUint32(real32 Real32)
 {
     uint32 Result = (uint32)roundf(Real32);
     return(Result);
 }
 
+/***
+* Note(Caleb): nieve buggy triangle draw call...
+*/
 internal void
-draw_rectangle(win32_offscreen_buffer_t* buffer, v2_t vec_min, v2_t vec_max, real32 r, real32 g, real32 b)
+draw_triangle(win32_offscreen_buffer_t* buffer, vec2_t left, vec2_t right, vec2_t top, real32 r, real32 g, real32 b)
 {
-    int32 Minx = RoundReal32ToInt32(vec_min.x);
-    int32 Miny = RoundReal32ToInt32(vec_min.y);
-    int32 Maxx = RoundReal32ToInt32(vec_max.x);
-    int32 Maxy = RoundReal32ToInt32(vec_max.y);
+    int32 leftx = roundReal32ToInt32(left.x);
+    int32 lefty = roundReal32ToInt32(left.y);
 
-    if(Minx < 0)
+    int32 rightx = roundReal32ToInt32(right.x);
+    int32 righty = roundReal32ToInt32(right.y);
+
+    int32 topx = roundReal32ToInt32(top.x);
+    int32 topy = roundReal32ToInt32(top.y);
+
+    if (leftx < 0)
+        leftx = 0;
+    if (rightx < 0)
+        rightx = 0;
+    if (topx < 0)
+        topx = 0;
+
+    if (lefty < 0)
+        lefty = 0;
+    if (righty < 0)
+        righty = 0;
+    if (topy < 0)
+        topy = 0;
+
+    if (leftx > buffer->width)
+        leftx = buffer->width;
+    if (rightx > buffer->width)
+        rightx = buffer->width;
+    if (topx > buffer->width)
+        topx = buffer->width;
+
+     if (lefty > buffer->height)
+        lefty = 0;
+    if (righty > buffer->height)
+        righty = 0;
+    if (topy > buffer->height)
+        topy = buffer->height;
+
+    uint32 color = ((roundReal32ToUint32(r * 255.0f) << 16) |
+                    (roundReal32ToUint32(g * 255.0f) << 8)  |
+                    (roundReal32ToUint32(b * 255.0f) << 0));
+
+    int32_t midx = (rightx - leftx) / 2 + leftx;
+    for (int32_t y=0; y < righty-topy; ++y)
     {
+        for (int32_t x=midx-y; x <= midx+y; ++x)
+        {
+            int32_t pixelx = midx + x;
+            int32_t pixely = topy + y;
+            uint8_t* pixel_pos = ((uint8_t*)buffer->memory +
+                                pixely*buffer->pitch + pixelx*buffer->bytes_per_pixel);
+            *((int32_t*)pixel_pos) = color;
+        }
+    }
+}
+
+internal void
+draw_rectangle(win32_offscreen_buffer_t* buffer, vec2_t vec_min, vec2_t vec_max, real32 r, real32 g, real32 b)
+{
+    int32 Minx = roundReal32ToInt32(vec_min.x);
+    int32 Miny = roundReal32ToInt32(vec_min.y);
+    int32 Maxx = roundReal32ToInt32(vec_max.x);
+    int32 Maxy = roundReal32ToInt32(vec_max.y);
+
+    if (Minx < 0)
         Minx = 0;
-    }
-
-    if(Miny < 0)
-    {
+    if (Miny < 0)
         Miny = 0;
-    }
-
-    if(Maxx > buffer->width)
-    {
+    if (Maxx > buffer->width)
         Maxx = buffer->width;
-    }
-
-    if(Maxy > buffer->height)
-    {
+    if (Maxy > buffer->height)
         Maxy = buffer->height;
-    }
 
-    uint32 Color = ((RoundReal32ToUInt32(r * 255.0f) << 16) |
-                    (RoundReal32ToUInt32(g * 255.0f) << 8) |
-                    (RoundReal32ToUInt32(b * 255.0f) << 0));
+    uint32 Color = ((roundReal32ToUint32(r * 255.0f) << 16) |
+                    (roundReal32ToUint32(g * 255.0f) << 8)  |
+                    (roundReal32ToUint32(b * 255.0f) << 0));
 
     uint8 *Row = ((uint8 *)buffer->memory +
                   Minx*buffer->bytes_per_pixel +
@@ -499,14 +546,25 @@ WinMain(HINSTANCE Instance,
                 game_input_t* new_input = &input[0];
                 game_input_t* old_input = &input[1];
 
-                LARGE_INTEGER LastCounter = Win32GetWallClock();
-                LARGE_INTEGER FlipWallClock = Win32GetWallClock();
+                LARGE_INTEGER LastCounter = win32_get_wall_clock();
+                LARGE_INTEGER FlipWallClock = win32_get_wall_clock();
 
                 uint64 LastCycleCount = __rdtsc();
 
-                v2_t player_pos = {(real32)g_backbuffer.width/2, (real32)g_backbuffer.height/2};
-                int32 player_width = 40;
                 real32 player_move_speed = 200.0f;
+                int32_t player_width = 100;
+                int32_t player_height = 100;
+                int32_t player_startx = g_backbuffer.width / 2;
+                int32_t player_starty = g_backbuffer.height / 2;
+
+                vec2_t player_left = {(real32)(player_startx-player_width/2),
+                                      (real32)(player_height + (player_starty + player_height / 2))};
+
+                vec2_t player_right = {(real32)(player_startx + player_width/2),
+                                      (real32)(player_height + (player_starty + player_height / 2))};
+
+                vec2_t player_top = {(real32)(player_left.x + ((player_right.x - player_left.x) / 2)),
+                                     (real32)(player_starty - player_height / 2)};
 
                 while(g_running)
                 {
@@ -526,35 +584,52 @@ WinMain(HINSTANCE Instance,
                     }
 
                     win32_process_pending_messages(&win32_state, new_keyboard_controller);
-
-                    // game update and render
-                    v2_t zero_vec = {0.0f, 0.0f};
-                    v2_t wh_vec = {(real32)g_backbuffer.width, (real32)g_backbuffer.height};
-                    draw_rectangle(&g_backbuffer, zero_vec, wh_vec, 0.0f, 0.0f, 0.0f);
+/***
+* Game Update and render
+*/
+                    // Clear screen
+                    vec2_t zero_vec = {0.0f, 0.0f};
+                    vec2_t wh_vec = {(real32)g_backbuffer.width, (real32)g_backbuffer.height};
+                    draw_rectangle(&g_backbuffer, zero_vec, wh_vec, 0.0f, 0.0f, 1.0f);
 
                     if (new_keyboard_controller->MoveRight.EndedDown)
-                        player_pos.x+=player_move_speed*new_input->dtForFrame;;
+                    {
+                        player_top.x += player_move_speed*new_input->dtForFrame;
+                        player_right.x += player_move_speed*new_input->dtForFrame;
+                        player_left.x += player_move_speed*new_input->dtForFrame;
+                    }
                     if (new_keyboard_controller->MoveLeft.EndedDown)
-                        player_pos.x-=player_move_speed*new_input->dtForFrame;
+                    {
+                        player_top.x -= player_move_speed*new_input->dtForFrame;
+                        player_right.x -= player_move_speed*new_input->dtForFrame;
+                        player_left.x -= player_move_speed*new_input->dtForFrame;
+                    }
                     if (new_keyboard_controller->MoveUp.EndedDown)
-                        player_pos.y-=player_move_speed*new_input->dtForFrame;
+                    {
+                        player_top.y -= player_move_speed*new_input->dtForFrame;
+                        player_right.y -= player_move_speed*new_input->dtForFrame;
+                        player_left.y -= player_move_speed*new_input->dtForFrame;
+                    }
                     if (new_keyboard_controller->MoveDown.EndedDown)
-                        player_pos.y+=player_move_speed*new_input->dtForFrame;
+                    {
+                        player_top.y += player_move_speed*new_input->dtForFrame;
+                        player_right.y += player_move_speed*new_input->dtForFrame;
+                        player_left.y += player_move_speed*new_input->dtForFrame;
+                    }
 
-                    v2_t min = {player_pos.x - (player_width*0.5f), player_pos.y - (player_width*0.5f)};
-                    v2_t max = {player_pos.x + (player_width*0.5f), player_pos.y + (player_width*0.5f)};
-/*
-                    min.x = (min.x*cosf(1.0f)) - (min.y*sinf(1.0f));
-                    min.y = (min.x*sinf(1.0f)) + (min.y*cosf(1.0f));
-                    max.x = (max.x*cosf(1.0f)) - (max.y*sinf(1.0f));
-                    max.y = (max.x*sinf(1.0f)) + (max.y*cosf(1.0f));
-*/
+                    vec2_t left = {player_left.x+2, player_left.y+2};
+                    vec2_t right = {player_right.x+2, player_right.y+2};
+                    vec2_t top = {player_top.x+2, player_top.y+2};
 
-                    real32 gray = 0.5f;
-                    draw_rectangle(&g_backbuffer, min, max, gray, gray, gray);
-                    /////
+                    // Draw Player
+                    real32 gray = 0.6f;
+                    draw_rectangle(&g_backbuffer, player_left, left, gray, 1.0f, 0.0f);
+                    draw_rectangle(&g_backbuffer, player_right, right, gray, 1.0f, 0.0f);
+                    draw_rectangle(&g_backbuffer, player_top, top, gray, 1.0f, 0.0f);
+                    draw_triangle(&g_backbuffer, player_left, player_right, player_top, gray, gray, 0.0f);
+/////////
 
-                    LARGE_INTEGER WorkCounter = Win32GetWallClock();
+                    LARGE_INTEGER WorkCounter = win32_get_wall_clock();
                     real32 WorkSecondsElapsed = Win32GetSecondsElapsed(LastCounter, WorkCounter);
 
                     real32 SecondsElapsedForFrame = WorkSecondsElapsed;
@@ -571,7 +646,7 @@ WinMain(HINSTANCE Instance,
                         }
 
                         real32 TestSecondsElapsedForFrame = Win32GetSecondsElapsed(LastCounter,
-                                                                                   Win32GetWallClock());
+                                                                                   win32_get_wall_clock());
                         if(TestSecondsElapsedForFrame < TargetSecondsPerFrame)
                         {
                             // TODO(casey): LOG MISSED SLEEP HERE
@@ -580,14 +655,14 @@ WinMain(HINSTANCE Instance,
                         while(SecondsElapsedForFrame < TargetSecondsPerFrame)
                         {
                             SecondsElapsedForFrame = Win32GetSecondsElapsed(LastCounter,
-                                                                            Win32GetWallClock());
+                                                                            win32_get_wall_clock());
                         }
                     }
-                    LARGE_INTEGER EndCounter = Win32GetWallClock();
+                    LARGE_INTEGER EndCounter = win32_get_wall_clock();
                     real32 MSPerFrame = 1000.0f*Win32GetSecondsElapsed(LastCounter, EndCounter);
                     LastCounter = EndCounter;
 
-                    FlipWallClock = Win32GetWallClock();
+                    FlipWallClock = win32_get_wall_clock();
 
                     win32_window_dimension_t dimension = win32_get_window_dimension(window);
                     HDC device_context = GetDC(window);
