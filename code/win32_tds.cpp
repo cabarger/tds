@@ -364,7 +364,7 @@ union vec2_t
 };
 
 inline int32
-roundReal32ToInt32(real32 Real32)
+round_real32_to_int32(real32 Real32)
 {
     int32 Result = (int32)roundf(Real32);
     return(Result);
@@ -377,74 +377,37 @@ roundReal32ToUint32(real32 Real32)
     return(Result);
 }
 
-/***
-* Note(Caleb): nieve buggy triangle draw call...
-*/
 internal void
-draw_triangle(win32_offscreen_buffer_t* buffer, vec2_t left, vec2_t right, vec2_t top, real32 r, real32 g, real32 b)
+draw_line(win32_offscreen_buffer_t* buffer, vec2_t start, vec2_t end, real32 r, real32 g, real32 b)
 {
-    int32 leftx = roundReal32ToInt32(left.x);
-    int32 lefty = roundReal32ToInt32(left.y);
-
-    int32 rightx = roundReal32ToInt32(right.x);
-    int32 righty = roundReal32ToInt32(right.y);
-
-    int32 topx = roundReal32ToInt32(top.x);
-    int32 topy = roundReal32ToInt32(top.y);
-
-    if (leftx < 0)
-        leftx = 0;
-    if (rightx < 0)
-        rightx = 0;
-    if (topx < 0)
-        topx = 0;
-
-    if (lefty < 0)
-        lefty = 0;
-    if (righty < 0)
-        righty = 0;
-    if (topy < 0)
-        topy = 0;
-
-    if (leftx > buffer->width)
-        leftx = buffer->width;
-    if (rightx > buffer->width)
-        rightx = buffer->width;
-    if (topx > buffer->width)
-        topx = buffer->width;
-
-     if (lefty > buffer->height)
-        lefty = 0;
-    if (righty > buffer->height)
-        righty = 0;
-    if (topy > buffer->height)
-        topy = buffer->height;
+    int32 length = round_real32_to_int32(sqrt(((end.x - start.x)*(end.x - start.x)) +
+                                             ((end.y - start.y)*(end.y - start.y))));
+    real32 stepx = (end.x - start.x) / length;
+    real32 stepy = (end.y - start.y) / length;
+    real32 currx = start.x;
+    real32 curry = start.y;
 
     uint32 color = ((roundReal32ToUint32(r * 255.0f) << 16) |
                     (roundReal32ToUint32(g * 255.0f) << 8)  |
                     (roundReal32ToUint32(b * 255.0f) << 0));
-
-    int32_t midx = (rightx - leftx) / 2 + leftx;
-    for (int32_t y=0; y < righty-topy; ++y)
+    for (int i=0; i < length; ++i)
     {
-        for (int32_t x=midx-y; x <= midx+y; ++x)
-        {
-            int32_t pixelx = midx + x;
-            int32_t pixely = topy + y;
-            uint8_t* pixel_pos = ((uint8_t*)buffer->memory +
-                                pixely*buffer->pitch + pixelx*buffer->bytes_per_pixel);
-            *((int32_t*)pixel_pos) = color;
-        }
+        uint8* pixel_start = ((uint8 *)buffer->memory +
+                               round_real32_to_int32(currx)*buffer->bytes_per_pixel +
+                               round_real32_to_int32(curry)*buffer->pitch);
+        *(uint32*)pixel_start = color;
+        currx += stepx;
+        curry += stepy;
     }
 }
 
 internal void
 draw_rectangle(win32_offscreen_buffer_t* buffer, vec2_t vec_min, vec2_t vec_max, real32 r, real32 g, real32 b)
 {
-    int32 Minx = roundReal32ToInt32(vec_min.x);
-    int32 Miny = roundReal32ToInt32(vec_min.y);
-    int32 Maxx = roundReal32ToInt32(vec_max.x);
-    int32 Maxy = roundReal32ToInt32(vec_max.y);
+    int32 Minx = round_real32_to_int32(vec_min.x);
+    int32 Miny = round_real32_to_int32(vec_min.y);
+    int32 Maxx = round_real32_to_int32(vec_max.x);
+    int32 Maxy = round_real32_to_int32(vec_max.y);
 
     if (Minx < 0)
         Minx = 0;
@@ -552,8 +515,8 @@ WinMain(HINSTANCE Instance,
                 uint64 LastCycleCount = __rdtsc();
 
                 real32 player_move_speed = 200.0f;
-                int32_t player_width = 100;
-                int32_t player_height = 100;
+                int32_t player_width = 50;
+                int32_t player_height = 40;
                 int32_t player_startx = g_backbuffer.width / 2;
                 int32_t player_starty = g_backbuffer.height / 2;
 
@@ -590,7 +553,7 @@ WinMain(HINSTANCE Instance,
                     // Clear screen
                     vec2_t zero_vec = {0.0f, 0.0f};
                     vec2_t wh_vec = {(real32)g_backbuffer.width, (real32)g_backbuffer.height};
-                    draw_rectangle(&g_backbuffer, zero_vec, wh_vec, 0.0f, 0.0f, 1.0f);
+                    draw_rectangle(&g_backbuffer, zero_vec, wh_vec, 0.0f, 0.0f, 0.0f);
 
                     if (new_keyboard_controller->MoveRight.EndedDown)
                     {
@@ -617,16 +580,10 @@ WinMain(HINSTANCE Instance,
                         player_left.y += player_move_speed*new_input->dtForFrame;
                     }
 
-                    vec2_t left = {player_left.x+2, player_left.y+2};
-                    vec2_t right = {player_right.x+2, player_right.y+2};
-                    vec2_t top = {player_top.x+2, player_top.y+2};
-
                     // Draw Player
-                    real32 gray = 0.6f;
-                    draw_rectangle(&g_backbuffer, player_left, left, gray, 1.0f, 0.0f);
-                    draw_rectangle(&g_backbuffer, player_right, right, gray, 1.0f, 0.0f);
-                    draw_rectangle(&g_backbuffer, player_top, top, gray, 1.0f, 0.0f);
-                    draw_triangle(&g_backbuffer, player_left, player_right, player_top, gray, gray, 0.0f);
+                    draw_line(&g_backbuffer, player_left, player_right, 1.0f, 0.0f, 0.0f);
+                    draw_line(&g_backbuffer, player_right, player_top, 0.0f, 1.0f, 0.0f);
+                    draw_line(&g_backbuffer, player_top, player_left, 0.0f, 0.0f, 1.0f);
 /////////
 
                     LARGE_INTEGER WorkCounter = win32_get_wall_clock();
