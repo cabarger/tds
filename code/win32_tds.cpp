@@ -388,10 +388,10 @@ draw_line(win32_offscreen_buffer_t* buffer, vec2_t start, vec2_t end, real32 r, 
     int32 endx = round_real32_to_int32(end.x);
     int32 endy = round_real32_to_int32(end.y);
 
-    if (endx >= buffer->width)
-        endx = buffer->width;
-    if (endx < 0)
-        endx = 0;
+    if (startx >= buffer->width)
+        startx = buffer->width;
+    if (startx < 0)
+        startx = 0;
     if (endy >= buffer->height)
         endy = buffer->height;
     if (endy < 0)
@@ -564,7 +564,6 @@ WinMain(HINSTANCE Instance,
                     }
                     win32_process_pending_messages(&win32_state, new_keyboard_controller);
 
-                    // Set rel mouse coords to
                     tagPOINT mousep = {};
                     GetCursorPos(&mousep);
                     ScreenToClient(window, &mousep);
