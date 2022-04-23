@@ -390,10 +390,21 @@ draw_line(win32_offscreen_buffer_t* buffer, vec2_t start, vec2_t end, real32 r, 
 
     if (startx >= buffer->width)
         startx = buffer->width;
+    if (endx >= buffer->width)
+        endx = buffer->width;
+
     if (startx < 0)
         startx = 0;
+    if (endx < 0)
+        endx = 0;
+
+    if (starty >= buffer->height)
+        starty = buffer->height;
     if (endy >= buffer->height)
         endy = buffer->height;
+
+    if (starty < 0)
+        starty = 0;
     if (endy < 0)
         endy = 0;
 
