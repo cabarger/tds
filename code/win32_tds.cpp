@@ -39,6 +39,7 @@ typedef double real64;
 #define array_count(Array) (sizeof(Array) / sizeof((Array)[0]))
 
 #include <windows.h>
+#include <winuser.h>
 
 struct win32_offscreen_buffer_t
 {
@@ -118,7 +119,7 @@ typedef struct game_controller_input_t
 typedef struct game_input_t
 {
     game_button_state_t MouseButtons[5];
-    int32 MouseX, MouseY, MouseZ;
+    int32 mousex, mousey, mousez;
 
     real32 dtForFrame;
 
@@ -364,10 +365,12 @@ union vec2_t
 };
 
 inline int32
-round_real32_to_int32(real32 Real32)
+round_real32_to_int32(real32 r32)
 {
-    int32 Result = (int32)roundf(Real32);
-    return(Result);
+    if (r32 == 0.0f)
+        return 0;
+    int32 result = (int32)roundf(r32);
+    return result;
 }
 
 inline uint32
@@ -380,10 +383,24 @@ roundReal32ToUint32(real32 Real32)
 internal void
 draw_line(win32_offscreen_buffer_t* buffer, vec2_t start, vec2_t end, real32 r, real32 g, real32 b)
 {
-    int32 length = round_real32_to_int32(sqrt(((end.x - start.x)*(end.x - start.x)) +
-                                             ((end.y - start.y)*(end.y - start.y))));
-    real32 stepx = (end.x - start.x) / length;
-    real32 stepy = (end.y - start.y) / length;
+    int32 startx = round_real32_to_int32(start.x);
+    int32 starty = round_real32_to_int32(start.y);
+    int32 endx = round_real32_to_int32(end.x);
+    int32 endy = round_real32_to_int32(end.y);
+
+    if (endx >= buffer->width)
+        endx = buffer->width;
+    if (endx < 0)
+        endx = 0;
+    if (endy >= buffer->height)
+        endy = buffer->height;
+    if (endy < 0)
+        endy = 0;
+
+    int32 length = round_real32_to_int32(sqrt(((endx - startx)*(endx - startx)) +
+                                             ((endy - starty)*(endy - starty))));
+    real32 stepx = (endx - start.x) / length;
+    real32 stepy = (endy - start.y) / length;
     real32 currx = start.x;
     real32 curry = start.y;
 
@@ -545,11 +562,25 @@ WinMain(HINSTANCE Instance,
                         new_keyboard_controller->buttons[button_index].EndedDown =
                             old_keyboard_controller->buttons[button_index].EndedDown;
                     }
-
                     win32_process_pending_messages(&win32_state, new_keyboard_controller);
+
+                    // Set rel mouse coords to
+                    tagPOINT mousep = {};
+                    GetCursorPos(&mousep);
+                    ScreenToClient(window, &mousep);
+                    new_input->mousex = mousep.x;
+                    new_input->mousey = mousep.y;
+                    new_input->mousez = 0;
+#if 0
+                    char buf[30] = {0};
+                    sprintf(buf, "%d, %d\n", x, y);
+                    OutputDebugString(buf);
+#endif
+
 /***
 * Game Update and render
 */
+
                     // Clear screen
                     vec2_t zero_vec = {0.0f, 0.0f};
                     vec2_t wh_vec = {(real32)g_backbuffer.width, (real32)g_backbuffer.height};
@@ -584,6 +615,9 @@ WinMain(HINSTANCE Instance,
                     draw_line(&g_backbuffer, player_left, player_right, 1.0f, 0.0f, 0.0f);
                     draw_line(&g_backbuffer, player_right, player_top, 0.0f, 1.0f, 0.0f);
                     draw_line(&g_backbuffer, player_top, player_left, 0.0f, 0.0f, 1.0f);
+
+                    vec2_t mouse_pos = {(real32)new_input->mousex, (real32)new_input->mousey};
+                    draw_line(&g_backbuffer, zero_vec, mouse_pos, 1.0f, 1.0f, 1.0f);
 /////////
 
                     LARGE_INTEGER WorkCounter = win32_get_wall_clock();
