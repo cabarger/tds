@@ -468,6 +468,27 @@ draw_rectangle(win32_offscreen_buffer_t* buffer, vec2_t vec_min, vec2_t vec_max,
         Row += buffer->pitch;
     }
 }
+/*
+internal vec2_t
+rotate(vec2_t unit_vec, real32 angle)
+{
+    real32 x = (in.x*cosf(angle)) - (in.y*sinf(angle));
+    real32 y = (in.x*sinf(angle)) + (in.y*cosf(angle));
+    vec2_t out = {x, y};
+    return out;
+}
+*/
+
+/*
+internal real32
+rad(real32 in)
+{
+    real32 out;
+
+    out = in * (3.14 / 180);
+    return out;
+}
+*/
 
 int CALLBACK
 WinMain(HINSTANCE Instance,
@@ -505,8 +526,8 @@ WinMain(HINSTANCE Instance,
                 WS_OVERLAPPEDWINDOW|WS_VISIBLE,
                 CW_USEDEFAULT,
                 CW_USEDEFAULT,
-                CW_USEDEFAULT,
-                CW_USEDEFAULT,
+                1000,
+                600,
                 0,
                 0,
                 Instance,
@@ -543,8 +564,8 @@ WinMain(HINSTANCE Instance,
                 uint64 LastCycleCount = __rdtsc();
 
                 real32 player_move_speed = 200.0f;
-                int32_t player_width = 50;
-                int32_t player_height = 40;
+                int32_t player_width = 25;
+                int32_t player_height = 20;
                 int32_t player_startx = g_backbuffer.width / 2;
                 int32_t player_starty = g_backbuffer.height / 2;
 
@@ -588,14 +609,16 @@ WinMain(HINSTANCE Instance,
 #endif
 
 /***
-* Game Update and render
+* Game update and render
 */
+                    // TODO(caleb): Make player rotate to face the mouse.
 
                     // Clear screen
                     vec2_t zero_vec = {0.0f, 0.0f};
                     vec2_t wh_vec = {(real32)g_backbuffer.width, (real32)g_backbuffer.height};
                     draw_rectangle(&g_backbuffer, zero_vec, wh_vec, 0.0f, 0.0f, 0.0f);
 
+                    // Translate player verticies
                     if (new_keyboard_controller->MoveRight.EndedDown)
                     {
                         player_top.x += player_move_speed*new_input->dtForFrame;
@@ -621,14 +644,36 @@ WinMain(HINSTANCE Instance,
                         player_left.y += player_move_speed*new_input->dtForFrame;
                     }
 
+
+                    // Draw Line from player mid to mouse xy
+                    vec2_t mouse_pos = {(real32)new_input->mousex, (real32)new_input->mousey};
+                    vec2_t player_mid = {player_top.x, player_top.y + player_height};
+                    draw_line(&g_backbuffer, player_mid, mouse_pos, 1.0f, 1.0f, 1.0f);
+
+                    vec2_t veca = {player_mid.x - player_top.x, player_mid.y - player_top.y};
+                    real32 veca_len = sqrtf(veca.x * veca.x + veca.y * veca.y);
+                    vec2_t unit_veca = {veca.x / veca_len, veca.y / veca_len};
+
+                    vec2_t vecb = {player_mid.x - mouse_pos.x, player_mid.y - mouse_pos.y};
+                    real32 vecb_len = sqrtf(vecb.x * vecb.x + vecb.y * vecb.y);
+                    vec2_t unit_vecb = {vecb.x / vecb_len, vecb.y / vecb_len};
+
+                    real32 angle_ab = acosf(unit_veca.x*unit_vecb.x + unit_veca.y*unit_vecb.y);
+
+                    vec2_t newpos = {cosf(angle_ab), sinf(angle_ab)};
+                    newpos.x *= veca_len;
+                    newpos.y *= veca_len;
+
                     // Draw Player
-                    draw_line(&g_backbuffer, player_left, player_right, 1.0f, 0.0f, 0.0f);
+                   /*
+                    draw_line(&g_backbuffer, player_left, player_top, 1.0f, 0.0f, 0.0f);
                     draw_line(&g_backbuffer, player_right, player_top, 0.0f, 1.0f, 0.0f);
                     draw_line(&g_backbuffer, player_top, player_left, 0.0f, 0.0f, 1.0f);
+                    */
 
-                    vec2_t mouse_pos = {(real32)new_input->mousex, (real32)new_input->mousey};
-                    draw_line(&g_backbuffer, zero_vec, mouse_pos, 1.0f, 1.0f, 1.0f);
-/////////
+                    // Draw line from player mid to player top
+                    draw_line(&g_backbuffer, player_mid, {player_mid.x + newpos.x, player_mid.y + newpos.y}, 1.0f, 1.0f, 0.0f);
+                    draw_line(&g_backbuffer, player_mid, player_top, 0.0f, 1.0f, 1.0f);
 
                     LARGE_INTEGER WorkCounter = win32_get_wall_clock();
                     real32 WorkSecondsElapsed = Win32GetSecondsElapsed(LastCounter, WorkCounter);
