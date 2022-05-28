@@ -2,6 +2,7 @@
 #define COMPILER_MSVC 0
 #endif
 
+
 #include <stdint.h>
 #include <stddef.h>
 #include <math.h>
@@ -127,15 +128,81 @@ typedef struct game_input_t
 } game_input_t;
 
 
+#pragma pack(push, 1)
+struct bmp_header_t
+{
+    // header
+    uint16_t signiture;
+    uint32_t file_size;
+    uint32_t unused_;
+    uint32_t image_data_offset;
+
+    // infoheader
+    uint32_t info_header_size;
+    uint32_t pixel_width;
+    uint32_t pixel_height;
+    uint16_t n_planes;
+    uint16_t bits_per_pixel;
+
+    uint32_t compression_type;
+    uint32_t compression_size;
+
+    // 4 bytes horz pixels per meter
+    // 4 bytes vert pixels per meter
+    // 4 bytes n colors actually used
+    // 4 bytes important colors
+    uint32_t pad_;
+};
+
+
+struct bmp_t
+{
+    uint32_t pixel_width;
+    uint32_t pixel_height;
+    uint32_t bytes_per_pixel;
+
+    uint8_t* image_data;
+};
+
+internal void
+load_bmp(const char* path, bmp_t* bmp)
+{
+    FILE* bmp_hand = fopen(path, "r");
+
+    bmp_header_t header = {0};
+    fread(&header, sizeof(bmp_header_t), 1, bmp_hand);
+
+    bmp->pixel_width = header.pixel_width;
+    bmp->pixel_height = header.pixel_height;
+
+    assert(header.bits_per_pixel > 7);
+    bmp->bytes_per_pixel = header.bits_per_pixel / 8;
+
+    bmp->image_data = (uint8_t *) calloc(bmp->pixel_width*bmp->pixel_height, bmp->bytes_per_pixel);
+    fseek(bmp_hand, header.image_data_offset, SEEK_SET);
+    fread(bmp->image_data, bmp->bytes_per_pixel, bmp->pixel_width*bmp->pixel_height, bmp_hand);
+
+    fclose(bmp_hand);
+#if 0
+    char buf[30] = {0};
+    sprintf(buf, "FILE SIZE: %i\n", header.file_size);
+    OutputDebugString(buf);
+
+    memset(buf, 0, sizeof(buf));
+    sprintf(buf, "PIXEL WIDTH: %i\n", header.pixel_width);
+    OutputDebugString(buf);
+#endif
+}
+
 global_variable bool32 g_running;
 global_variable win32_offscreen_buffer_t g_backbuffer;
-global_variable int64 GlobalPerfCountFrequency;
+global_variable int64 g_perfcount_freq;
 
 inline real32
-Win32GetSecondsElapsed(LARGE_INTEGER Start, LARGE_INTEGER End)
+win32_get_seconds_elapsed(LARGE_INTEGER Start, LARGE_INTEGER End)
 {
     real32 Result = ((real32)(End.QuadPart - Start.QuadPart) /
-                     (real32)GlobalPerfCountFrequency);
+                     (real32)g_perfcount_freq);
     return(Result);
 }
 
@@ -381,6 +448,45 @@ roundReal32ToUint32(real32 Real32)
 }
 
 internal void
+draw_bmp(win32_offscreen_buffer_t* buffer, vec2_t top_left, bmp_t* bmp)
+{
+    int32 minx = round_real32_to_int32(top_left.x);
+    int32 miny = round_real32_to_int32(top_left.y);
+    int32 maxx = (int32)bmp->pixel_width;
+    int32 maxy = (int32)bmp->pixel_height;
+
+    if (minx < 0)
+        minx = 0;
+    if (miny < 0)
+        miny = 0;
+    if (maxx > buffer->width)
+        maxx = buffer->width;
+    if (maxy > buffer->height)
+        maxy = buffer->height;
+
+    uint8 *Row = ((uint8 *)buffer->memory + miny*buffer->pitch + minx*buffer->bytes_per_pixel);
+    for(int y = miny;
+        y < maxy;
+        ++y)
+    {
+        uint32 *Pixel = (uint32 *)Row;
+        for(int x = minx;
+            x < maxx;
+            ++x)
+        {
+            // RGB => BGR
+            uint8* bmp_pixel = (uint8 *)bmp->image_data + (maxy - y)*bmp->pixel_width*bmp->bytes_per_pixel + x*bmp->bytes_per_pixel;
+            uint32 Color = ((*(bmp_pixel + 2) << 16) | // R
+                            (*(bmp_pixel + 1)) << 8  | // G
+                            (*bmp_pixel) << 0);        // B
+            *Pixel++ = Color;
+        }
+
+        Row += buffer->pitch;
+    }
+}
+
+internal void
 draw_line(win32_offscreen_buffer_t* buffer, vec2_t start, vec2_t end, real32 r, real32 g, real32 b)
 {
     int32 startx = round_real32_to_int32(start.x);
@@ -513,12 +619,12 @@ WinMain(HINSTANCE Instance,
 
     LARGE_INTEGER PerfCountFrequencyResult;
     QueryPerformanceFrequency(&PerfCountFrequencyResult);
-    GlobalPerfCountFrequency = PerfCountFrequencyResult.QuadPart;
+    g_perfcount_freq = PerfCountFrequencyResult.QuadPart;
 
     // NOTE(casey): Set the Windows scheduler granularity to 1ms
     // so that our Sleep() can be more granular.
     UINT DesiredSchedulerMS = 1;
-    bool32 SleepIsGranular = (timeBeginPeriod(DesiredSchedulerMS) == TIMERR_NOERROR);
+    bool32 sleep_is_granular = (timeBeginPeriod(DesiredSchedulerMS) == TIMERR_NOERROR);
 
     win32_resize_dib_section(&g_backbuffer, 960, 540);
 
@@ -571,14 +677,14 @@ WinMain(HINSTANCE Instance,
                 game_input_t* new_input = &input[0];
                 game_input_t* old_input = &input[1];
 
-                LARGE_INTEGER LastCounter = win32_get_wall_clock();
-                LARGE_INTEGER FlipWallClock = win32_get_wall_clock();
+                LARGE_INTEGER last_counter = win32_get_wall_clock();
+                LARGE_INTEGER flip_wall_clock = win32_get_wall_clock();
 
                 uint64 LastCycleCount = __rdtsc();
 
                 real32 player_move_speed = 200.0f;
                 int32_t player_width = 25;
-                int32_t player_height = 20;
+                int32_t player_height = 14;
                 int32_t player_startx = g_backbuffer.width / 2;
                 int32_t player_starty = g_backbuffer.height / 2;
 
@@ -590,6 +696,12 @@ WinMain(HINSTANCE Instance,
 
                 vec2_t player_top = {(real32)(player_left.x + ((player_right.x - player_left.x) / 2)),
                                      (real32)(player_starty - player_height / 2)};
+
+/***
+* BMP load
+*/
+                bmp_t test_bmp = {};
+                load_bmp("test.bmp", &test_bmp);
 
                 while(g_running)
                 {
@@ -619,12 +731,16 @@ WinMain(HINSTANCE Instance,
 /***
 * Game update and render
 */
-                    // TODO(caleb): Make player rotate to face the mouse. [ ]
+                    //TODO(caleb): bitmap loader
+                    //TODO(caleb): collision
 
                     // Clear screen
                     vec2_t zero_vec = {0.0f, 0.0f};
                     vec2_t wh_vec = {(real32)g_backbuffer.width, (real32)g_backbuffer.height};
                     draw_rectangle(&g_backbuffer, zero_vec, wh_vec, 0.0f, 0.0f, 0.0f);
+
+//                    draw_bmp(&g_backbuffer, {(real32) (100), (real32)(50) }, &test_bmp);
+                    draw_bmp(&g_backbuffer, zero_vec, &test_bmp);
 
                     // Translate player verticies
                     if (new_keyboard_controller->MoveRight.EndedDown)
@@ -652,6 +768,7 @@ WinMain(HINSTANCE Instance,
                         player_left.y += player_move_speed*new_input->dtForFrame;
                     }
 
+                    // Rotate player to face mosue
                     vec2_t mouse_pos = {(real32)new_input->mousex, (real32)new_input->mousey};
                     vec2_t player_mid = {player_top.x, player_top.y + player_height};
 
@@ -664,56 +781,52 @@ WinMain(HINSTANCE Instance,
                     real32 angle_ab = acosf((veca.x*vecb.x + veca.y*vecb.y) / (veca_len*vecb_len));
 
                     if (mouse_pos.x < player_mid.x)
-                        angle_ab = -angle_ab;
-#if 0
-                    char buf[30] = {0};
-                    sprintf(buf, "%f - %f\n", angle_ab, deg(angle_ab));
-                    OutputDebugString(buf);
-#endif
+                        angle_ab *= -1.0f;
+
                     // Translate player points
                     vec2_t player_left_p = rotate(player_left, player_mid, angle_ab);
                     vec2_t player_right_p = rotate(player_right, player_mid, angle_ab);
                     vec2_t player_top_p = rotate(player_top, player_mid, angle_ab);
 
                     // Draw Player
-                    draw_line(&g_backbuffer, player_left_p, player_top_p, 1.0f, 1.0f, 0.0f);
-                    draw_line(&g_backbuffer, player_right_p, player_top_p, 1.0f, 1.0f, 0.0f);
-                    draw_line(&g_backbuffer, player_left_p, player_right_p, 1.0f, 1.0f, 0.0f);
+                    draw_line(&g_backbuffer, player_left_p, player_top_p, 1.0f, 1.0f, 1.0f);
+                    draw_line(&g_backbuffer, player_right_p, player_top_p, 1.0f, 1.0f, 1.0f);
+                    draw_line(&g_backbuffer, player_left_p, player_right_p, 1.0f, 1.0f, 1.0f);
 
                     LARGE_INTEGER WorkCounter = win32_get_wall_clock();
-                    real32 WorkSecondsElapsed = Win32GetSecondsElapsed(LastCounter, WorkCounter);
+                    real32 WorkSecondsElapsed = win32_get_seconds_elapsed(last_counter, WorkCounter);
 
-                    real32 SecondsElapsedForFrame = WorkSecondsElapsed;
-                    if(SecondsElapsedForFrame < TargetSecondsPerFrame)
+                    real32 seconds_elapsed_for_frame = WorkSecondsElapsed;
+                    if(seconds_elapsed_for_frame < TargetSecondsPerFrame)
                     {
-                        if(SleepIsGranular)
+                        if(sleep_is_granular)
                         {
                             DWORD SleepMS = (DWORD)(1000.0f * (TargetSecondsPerFrame -
-                                                               SecondsElapsedForFrame));
+                                                               seconds_elapsed_for_frame));
                             if(SleepMS > 0)
                             {
                                 Sleep(SleepMS);
                             }
                         }
 
-                        real32 TestSecondsElapsedForFrame = Win32GetSecondsElapsed(LastCounter,
+                        real32 Testseconds_elapsed_for_frame = win32_get_seconds_elapsed(last_counter,
                                                                                    win32_get_wall_clock());
-                        if(TestSecondsElapsedForFrame < TargetSecondsPerFrame)
+                        if(Testseconds_elapsed_for_frame < TargetSecondsPerFrame)
                         {
                             // TODO(casey): LOG MISSED SLEEP HERE
                         }
 
-                        while(SecondsElapsedForFrame < TargetSecondsPerFrame)
+                        while(seconds_elapsed_for_frame < TargetSecondsPerFrame)
                         {
-                            SecondsElapsedForFrame = Win32GetSecondsElapsed(LastCounter,
+                            seconds_elapsed_for_frame = win32_get_seconds_elapsed(last_counter,
                                                                             win32_get_wall_clock());
                         }
                     }
-                    LARGE_INTEGER EndCounter = win32_get_wall_clock();
-                    real32 MSPerFrame = 1000.0f*Win32GetSecondsElapsed(LastCounter, EndCounter);
-                    LastCounter = EndCounter;
+                    LARGE_INTEGER end_counter = win32_get_wall_clock();
+                    real32 MSPerFrame = 1000.0f*win32_get_seconds_elapsed(last_counter, end_counter);
+                    last_counter = end_counter;
 
-                    FlipWallClock = win32_get_wall_clock();
+                    flip_wall_clock = win32_get_wall_clock();
 
                     win32_window_dimension_t dimension = win32_get_window_dimension(window);
                     HDC device_context = GetDC(window);
