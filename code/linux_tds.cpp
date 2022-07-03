@@ -1,20 +1,3 @@
-/***
-* --------------------------------
-* | TODO(cjb): OBJ file renderer |
-* --------------------------------
-* 1. Get lib/sym loading working [X]
-* 2. Figure out which GL functions I will need to bind. [ ]
-*    2a. bind GL functions [ ]
-* 3. Write GL needed to render obj. [ ]
-* --------------------------------
-*
-* -- vertex buffer objects (VBO) that can store a large number of vertices in the GPU's memory. --
-*
-* Model matrix
-* Setupview
-*
-*/
-
 #include "tds.h"
 #include "linux_tds.h"
 #include "tds_math.h"
@@ -35,11 +18,6 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
-
-// GL for rendering vericies
-// 1. bind a vao
-// 2. register vertex attrib arrays to new vao
-// 3.
 
 global_variable b32 GlobalRunning;
 
