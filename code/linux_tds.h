@@ -1,5 +1,6 @@
 #ifndef LINUX_TDS_H
 
+#include "tds_gl.h"
 #include <X11/Xlib.h>
 #include <GL/glx.h>
 

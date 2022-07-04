@@ -15,22 +15,9 @@ typedef GL_BIND_VERTEX_ARRAY(gl_bind_vertex_array);
 
 #define GL_ENABLE_VERTEX_ATTRIB_ARRAY(name) void name(GLuint index)
 typedef GL_ENABLE_VERTEX_ATTRIB_ARRAY(gl_enable_vertex_attrib_array);
-GL_ENABLE_VERTEX_ATTRIB_ARRAY(glEnableVertexAttribArrayStub)
-{
-    return;
-}
-global_variable gl_enable_vertex_attrib_array *glEnableVertexAttribArray_ = glEnableVertexAttribArrayStub;
-#define glEnableVertexAttribArray glEnableVertexAttribArray_
-
 
 #define GL_VERTEX_ATTRIB_POINTER(name) void name(GLuint index, GLint size, GLenum type, GLboolean normalized, GLsizei stride, const void *pointer)
 typedef GL_VERTEX_ATTRIB_POINTER(gl_vertex_attrib_pointer);
-GL_VERTEX_ATTRIB_POINTER(glVertexAttribPointerStub)
-{
-    return;
-}
-global_variable gl_vertex_attrib_pointer *glVertexAttribPointer_ = glVertexAttribPointerStub;
-#define glVertexAttribPointer glVertexAttribPointer_
 
 #define GL_DELETE_SHADER(name) void name(GLuint shader)
 typedef GL_DELETE_SHADER(gl_delete_shader);
@@ -80,6 +67,52 @@ typedef GL_BIND_BUFFER(gl_bind_buffer);
 
 #define GL_GEN_BUFFERS(name) void name(GLsizei n, GLuint *buffers)
 typedef GL_GEN_BUFFERS(gl_gen_buffers);
+
+#define GL_ENABLE(name) void name(GLenum cap)
+typedef GL_ENABLE(gl_enable);
+
+#define GL_CLEAR_COLOR(name) void name(GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha)
+typedef GL_CLEAR_COLOR(gl_clear_color);
+
+#define GL_CLEAR_(name) void name(GLbitfield mask)
+typedef GL_CLEAR_(gl_clear);
+
+#define GL_DRAW_ARRAYS(name) void name(GLenum mode, GLint first, GLsizei count);
+typedef GL_DRAW_ARRAYS(gl_draw_arrays);
+
+#define GL_FLUSH(name) void name(void)
+typedef GL_FLUSH(gl_flush);
+
+struct gl_api
+{
+    gl_gen_buffers *GenBuffers;
+    gl_bind_buffer *BindBuffer;
+    gl_buffer_data *BufferData;
+    gl_create_shader *CreateShader;
+    gl_shader_source *ShaderSource;
+    gl_compile_shader *CompileShader;
+    gl_get_shader_iv *GetShaderiv;
+    gl_get_shader_info_log *GetShaderInfoLog;
+    gl_create_program *CreateProgram;
+    gl_attach_shader *AttachShader;
+    gl_link_program *LinkProgram;
+    gl_get_program_iv *GetProgramiv;
+    gl_get_program_info_log *GetProgramInfoLog;
+    gl_use_program *UseProgram;
+    gl_delete_shader *DeleteShader;
+    gl_vertex_attrib_pointer *VertexAttribPointer;
+    gl_enable_vertex_attrib_array *EnableVertexAttribArray;
+    gl_gen_vertex_arrays *GenVertexArrays;
+    gl_bind_vertex_array *BindVertexArray;
+    gl_get_uniform_location *GetUniformLocation;
+    gl_uniform_matrix_4fv *UniformMatrix4fv;
+    gl_enable *Enable;
+    gl_clear_color *ClearColor;
+    gl_clear *Clear;
+    gl_draw_arrays *DrawArrays;
+    gl_flush *Flush;
+    //gl_polygon_mode *glPolygonMode;
+};
 
 #define TDS_GL_H
 #endif
