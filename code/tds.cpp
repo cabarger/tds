@@ -36,8 +36,8 @@ LoadOBJ(const char *Filename, debug_loaded_obj *OBJOut,
             }
             else if (*CurrCharPtr == 'v' && *(CurrCharPtr + 1) == 't')
             {
-                sscanf(CurrCharPtr + 2, "%f%f", tmp_uv_coords[n_uv_coords].m_,
-                                                tmp_uv_coords[n_uv_coords].m_ + 1);
+                sscanf(CurrCharPtr + 2, "%f%f", tmp_uv_coords[n_uv_coords].Elements,
+                                                tmp_uv_coords[n_uv_coords].Elements + 1);
                 n_uv_coords++;
             }
             else if (*CurrCharPtr == 'v' && *(CurrCharPtr + 1) == 'n')
@@ -46,9 +46,9 @@ LoadOBJ(const char *Filename, debug_loaded_obj *OBJOut,
             }
             else if (*CurrCharPtr == 'v')
             {
-                sscanf(CurrCharPtr + 1, "%f%f%f", tmp_verticies[n_verticies].m_,
-                                                  tmp_verticies[n_verticies].m_ + 1,
-                                                  tmp_verticies[n_verticies].m_ + 2);
+                sscanf(CurrCharPtr + 1, "%f%f%f", tmp_verticies[n_verticies].Elements,
+                                                  tmp_verticies[n_verticies].Elements + 1,
+                                                  tmp_verticies[n_verticies].Elements + 2);
                 n_verticies++;
             }
             else if (*CurrCharPtr == 'f')
@@ -165,26 +165,38 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         glAPI->DeleteShader(VertexShader);
         glAPI->DeleteShader(FragmentShader);
 
-        memset(&GameState->CameraP, 0, sizeof(v3));
-
+        GameState->CameraP = Vec3(0, 0, 1);
         Memory->IsInitialized = true;
     }
 
-    if (!Controller->Right.IsDown && Controller->Right.WasDown)
+    controller Controller = Input->Controller;
+    if (!Controller.Right.IsDown && Controller.Right.WasDown)
     {
-        GameState->CameraP.x += 1.0f;
+        GameState->CameraP.X -= 1.0f;
     }
-    if (!Controller->Left.IsDown && Controller->Left.WasDown)
+    if (!Controller.Left.IsDown && Controller.Left.WasDown)
     {
-        GameState->CameraP.x -= 1.0f;
+        GameState->CameraP.X += 1.0f;
     }
-    if (!Controller->Up.IsDown && Controller->Up.WasDown)
+    if (!Controller.Up.IsDown && Controller.Up.WasDown)
     {
-        GameState->CameraP.z += 1.0f;
+        GameState->CameraP.Z += 1.0f;
     }
-    if (!Controller->Down.IsDown && Controller->Down.WasDown)
+    if (!Controller.Down.IsDown && Controller.Down.WasDown)
     {
-        GameState->CameraP.z -= 1.0f;
+        GameState->CameraP.Z -= 1.0f;
+    }
+
+    r32 UpdateFreq = 50.0f;
+    static r32 UpdateCounter = 0.0f;
+    static v3 PlayerPos = {0};
+    UpdateCounter += Input->dTimeMS;
+    if (UpdateCounter > UpdateFreq)
+    {
+        UpdateCounter = 0.0f;
+//        PlayerPos.Z -= 0.01f;
+
+        printf("CameraP.X: %f, CameraP.Y: %f, CameraP.Z: %f\n", GameState->CameraP.X,GameState->CameraP.Y,GameState->CameraP.Z);
     }
 
     glAPI->ClearColor(0, 0, 0, 1);
@@ -192,23 +204,24 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     glAPI->UseProgram(GameState->ShaderProgram);
 
-    glm::mat4 Model = glm::mat4(1.0f);
-    glm::mat4 View = glm::mat4(1.0f);
-    glm::mat4 Projection = glm::mat4(1.0f);
+    //glm::mat4 Projection = glm::mat4(1.0f);
 
-//            Model = glm::rotate(Model, glm::radians(RotateAmt), glm::vec3(0.0f, 1.0f, 0.0f));
-    View = glm::translate(View, glm::vec3(-GameState->CameraP.x, GameState->CameraP.y, GameState->CameraP.z));
-    View = glm::rotate(View, glm::radians(-40.0f), glm::vec3(1.0f, 0.0f, 0.0f));
-    Projection = glm::perspective(glm::radians(100.0f), (r32)800 / (r32)600, 0.1f, 100.0f);
+    v3 CameraTarget = Vec3(0.0f, 0.0f, 0.0f);
+    v3 Up = Vec3(0.0f, 1.0f, 0.0f);
+
+//    m4 Model = Translate(PlayerPos);
+    m4 Model = Mat4(1.0f);
+    m4 View = LookAt(GameState->CameraP, CameraTarget, Up);
+    m4 Projection = Perspective(ToRadians(90.0f), (r32)640.0f / 480.0f, 0.1f, 100.0f);
 
     s32 ModelLoc = glAPI->GetUniformLocation(GameState->ShaderProgram, "model");
-    glAPI->UniformMatrix4fv(ModelLoc, 1, GL_FALSE, glm::value_ptr(Model));
+    glAPI->UniformMatrix4fv(ModelLoc, 1, GL_FALSE, Model.Elements[0]);
 
     s32 ViewLoc = glAPI->GetUniformLocation(GameState->ShaderProgram, "view");
-    glAPI->UniformMatrix4fv(ViewLoc, 1, GL_FALSE, glm::value_ptr(View));
+    glAPI->UniformMatrix4fv(ViewLoc, 1, GL_FALSE, View.Elements[0]);
 
     s32 ProjectionLoc = glAPI->GetUniformLocation(GameState->ShaderProgram, "projection");
-    glAPI->UniformMatrix4fv(ProjectionLoc, 1, GL_FALSE, glm::value_ptr(Projection));
+    glAPI->UniformMatrix4fv(ProjectionLoc, 1, GL_FALSE, Projection.Elements[0]);
 
     glAPI->BindVertexArray(GameState->VAO);
     glAPI->DrawArrays(GL_TRIANGLES, 0, GameState->PlayerOBJ.VertexCount);

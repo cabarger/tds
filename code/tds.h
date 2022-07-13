@@ -67,6 +67,13 @@ union controller
     button_state Buttons[4];
 };
 
+struct game_input
+{
+    controller Controller;
+    u32 MouseX, MouseY;
+    r32 dTimeMS;
+};
+
 struct debug_read_file_result
 {
     u32 ContentsSize;
@@ -106,7 +113,7 @@ struct game_memory
     gl_api glAPI;
 };
 
-#define GAME_UPDATE_AND_RENDER(name) void name(game_memory *Memory, controller *Controller)
+#define GAME_UPDATE_AND_RENDER(name) void name(game_memory *Memory, game_input *Input)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render);
 
 struct game_state

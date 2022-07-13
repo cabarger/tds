@@ -12,12 +12,10 @@
 #include <stdlib.h> // getenv
 #include <sys/stat.h>
 #include <limits.h>
+#include <time.h>
 
 #include <GL/gl.h>
 #include <GL/glx.h>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
 
 global_variable b32 GlobalRunning;
 
@@ -115,13 +113,15 @@ LinuxProcessKey(XKeyEvent XKey, controller *Controller)
         } break;
         default:
         {
+#if 0
             printf("Unhandled Keycode: %u\n", XKey.keycode);
+#endif
         } break;
     }
 }
 
 internal void
-LinuxProcessEvents(linux_state *LinuxState, controller *Controller)
+LinuxProcessEvents(linux_state *LinuxState, game_input *Input)
 {
     XWindowAttributes WindowAttributes;
     XGetWindowAttributes(LinuxState->Display, LinuxState->Window, &WindowAttributes);
@@ -131,9 +131,6 @@ LinuxProcessEvents(linux_state *LinuxState, controller *Controller)
     {
         switch (Event.type)
         {
-            case MapNotify:
-            {
-            } break;
             case ConfigureNotify:
             {
                 glViewport(0, 0, (GLfloat)Event.xconfigure.width, (GLfloat)Event.xconfigure.height);
@@ -145,8 +142,13 @@ LinuxProcessEvents(linux_state *LinuxState, controller *Controller)
             case KeyRelease:
             case KeyPress:
             {
-                LinuxProcessKey(Event.xkey, Controller);
+                LinuxProcessKey(Event.xkey, &Input->Controller);
             } break;
+            case MotionNotify:
+            {
+                Input->MouseX =  Event.xmotion.x;
+                Input->MouseY = Event.xmotion.y;
+            }
             default:
             {
             } break;
@@ -213,6 +215,14 @@ LinuxLoadGLAPI(gl_api *glAPI)
 //    glAPI->PolygonMode = (gl_polygon_mode *)glXGetProcAddress((GLubyte *)"glPolygonMode");
 }
 
+inline r32
+LinuxGetTimeMS(void)
+{
+    r32 Result;
+    Result = ((r32)clock() / CLOCKS_PER_SEC)*1000;
+    return(Result);
+}
+
 inline void
 LinuxWaitForWindowToMap(linux_state *LinuxState)
 {
@@ -249,7 +259,7 @@ main(int argc, char** argv)
             InvalidCodePath;
         }
 
-        LinuxState.EventMask = StructureNotifyMask|KeyPressMask|KeyReleaseMask;
+        LinuxState.EventMask = StructureNotifyMask|KeyPressMask|KeyReleaseMask|PointerMotionMask;
 
         XSetWindowAttributes SWA;
         SWA.colormap = XCreateColormap(LinuxState.Display, RootWindow(LinuxState.Display, VisualInfo->screen), VisualInfo->visual, AllocNone);
@@ -273,39 +283,45 @@ main(int argc, char** argv)
         GameMemory.DEBUGPlatformFreeFileMemory = DEBUGPlatformFreeFileMemory;
         LinuxLoadGLAPI(&GameMemory.glAPI);
 
-        controller Controller[2];
-        controller *OldController = Controller;
-        controller *NewController = Controller + 1;
+        game_input Input = {0};
+        controller OldController = {0};
+
+        r32 LastTimeMS = LinuxGetTimeMS();
 
         GlobalRunning = true;
         while(GlobalRunning)
         {
+            r32 TimeNowMS = LinuxGetTimeMS();
+            r32 TimeSinceLastFrameMS = TimeNowMS - LastTimeMS;
+            LastTimeMS = TimeNowMS;
+
             ino_t NewFileID = LinuxFileID("libtds.so");
             if (LinuxState.GameCode.FileID != NewFileID)
             {
                 LinuxLoadGameCode(&LinuxState.GameCode, NewFileID);
             }
 
-            LinuxProcessEvents(&LinuxState, NewController);
+            LinuxProcessEvents(&LinuxState, &Input);
             for (u8 ButtonIndex = 0;
-                 ButtonIndex < ArrayCount(NewController->Buttons);
+                 ButtonIndex < ArrayCount(Input.Controller.Buttons);
                  ++ButtonIndex)
             {
-                if (OldController->Buttons[ButtonIndex].IsDown)
+                if (OldController.Buttons[ButtonIndex].IsDown)
                 {
-                    NewController->Buttons[ButtonIndex].WasDown = true;
+                    Input.Controller.Buttons[ButtonIndex].WasDown = true;
                 }
                 else
                 {
-                    NewController->Buttons[ButtonIndex].WasDown = false;
+                    Input.Controller.Buttons[ButtonIndex].WasDown = false;
                 }
             }
+            Input.dTimeMS = TimeSinceLastFrameMS;
             if (LinuxState.GameCode.UpdateAndRender)
             {
-                LinuxState.GameCode.UpdateAndRender(&GameMemory, NewController);
+                LinuxState.GameCode.UpdateAndRender(&GameMemory, &Input);
             }
 
-            *OldController = *NewController;
+            OldController = Input.Controller;
         }
     }
 }
