@@ -2,10 +2,6 @@
 #include "tds_gl.h"
 #include <stdio.h>
 
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-
 void
 LoadOBJ(const char *Filename, debug_loaded_obj *OBJOut,
         debug_platform_read_entire_file *ReadEntireFile, debug_platform_free_file_memory *DEBUGPlatformFreeFileMemory)
@@ -165,7 +161,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         glAPI->DeleteShader(VertexShader);
         glAPI->DeleteShader(FragmentShader);
 
-        GameState->CameraP = Vec3(0, 0, 1);
+        GameState->CameraP = Vec3(0, 0, -3);
         Memory->IsInitialized = true;
     }
 
@@ -187,15 +183,15 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         GameState->CameraP.Z -= 1.0f;
     }
 
-    r32 UpdateFreq = 50.0f;
+    r32 UpdateFreq = 30.0f;
+    static u32 CounterCounter = 1;
     static r32 UpdateCounter = 0.0f;
     static v3 PlayerPos = {0};
-    UpdateCounter += Input->dTimeMS;
-    if (UpdateCounter > UpdateFreq)
+    UpdateCounter += Input->dTimeMS / 1000;
+    if ((UpdateCounter / UpdateFreq*CounterCounter) >= 1.0f)
     {
-        UpdateCounter = 0.0f;
-//        PlayerPos.Z -= 0.01f;
-
+        CounterCounter++;
+        PlayerPos.Z -= 0.01f;
         printf("CameraP.X: %f, CameraP.Y: %f, CameraP.Z: %f\n", GameState->CameraP.X,GameState->CameraP.Y,GameState->CameraP.Z);
     }
 
@@ -204,24 +200,21 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
     glAPI->UseProgram(GameState->ShaderProgram);
 
-    //glm::mat4 Projection = glm::mat4(1.0f);
-
     v3 CameraTarget = Vec3(0.0f, 0.0f, 0.0f);
-    v3 Up = Vec3(0.0f, 1.0f, 0.0f);
+    v3 Up = Vec3(cosf(UpdateCounter), sinf(UpdateCounter), 0.0f);
 
-//    m4 Model = Translate(PlayerPos);
-    m4 Model = Mat4(1.0f);
+    m4 Model = Translate(PlayerPos);
     m4 View = LookAt(GameState->CameraP, CameraTarget, Up);
-    m4 Projection = Perspective(ToRadians(90.0f), (r32)640.0f / 480.0f, 0.1f, 100.0f);
+    m4 Projection = Perspective(ToRadians(90.0f), (r32)640.0f / (r32)480.0f, 0.1f, 100.0f);
 
     s32 ModelLoc = glAPI->GetUniformLocation(GameState->ShaderProgram, "model");
-    glAPI->UniformMatrix4fv(ModelLoc, 1, GL_FALSE, Model.Elements[0]);
+    glAPI->UniformMatrix4fv(ModelLoc, 1, GL_FALSE, &Model.Elements[0][0]);
 
     s32 ViewLoc = glAPI->GetUniformLocation(GameState->ShaderProgram, "view");
-    glAPI->UniformMatrix4fv(ViewLoc, 1, GL_FALSE, View.Elements[0]);
+    glAPI->UniformMatrix4fv(ViewLoc, 1, GL_FALSE, &View.Elements[0][0]);
 
     s32 ProjectionLoc = glAPI->GetUniformLocation(GameState->ShaderProgram, "projection");
-    glAPI->UniformMatrix4fv(ProjectionLoc, 1, GL_FALSE, Projection.Elements[0]);
+    glAPI->UniformMatrix4fv(ProjectionLoc, 1, GL_FALSE, &Projection.Elements[0][0]);
 
     glAPI->BindVertexArray(GameState->VAO);
     glAPI->DrawArrays(GL_TRIANGLES, 0, GameState->PlayerOBJ.VertexCount);

@@ -42,7 +42,7 @@ union v3
     {
         r32 Result;
 
-        Result = (Elements[0] * Input.Elements[0]) + (Elements[1] * Input.Elements[1]) + (Elements[2] * Input.Elements[2]);
+        Result = (X * Input.X) + (Y * Input.Y) + (Z * Input.Z);
 
         return (Result);
     }
@@ -230,16 +230,14 @@ LookAt(v3 Eye, v3 Center, v3 Up)
 inline m4
 Perspective(r32 FOV, r32 AspectRatio, r32 Near, r32 Far)
 {
-    m4 Result = Mat4(1.0f);
+    m4 Result = Mat4(0.0f);
 
-    r32 Cotangent = 1.0f / tanf(FOV * (TDS_PI32 / 360.0f));
-
-    Result.Elements[0][0] = Cotangent / AspectRatio;
-    Result.Elements[1][1] = Cotangent;
+    r32 TanHalfFOV = tanf(FOV / 2);
+    Result.Elements[0][0] = 1 / (AspectRatio * TanHalfFOV);
+    Result.Elements[1][1] = 1 / (TanHalfFOV);
+    Result.Elements[2][2] = -(Far + Near) / (Far - Near);
     Result.Elements[2][3] = -1.0f;
-    Result.Elements[2][2] = (Near + Far) / (Near - Far);
-    Result.Elements[3][2] = (2.0f * Near * Far) / (Near - Far);
-    Result.Elements[3][3] = 0.0f;
+    Result.Elements[3][2] = -(2.0f * Far * Near) / (Far - Near);
 
     return (Result);
 }
