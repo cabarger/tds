@@ -1,6 +1,7 @@
 #include "tds.h"
 #include "tds_gl.h"
 #include <stdio.h>
+#include <cstring>
 
 void
 LoadOBJ(const char *Filename, debug_loaded_obj *OBJOut,
@@ -183,17 +184,10 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         GameState->CameraP.Z -= 1.0f;
     }
 
-    r32 UpdateFreq = 30.0f;
+    r32 UpdateFreq = 1.0f;
     static u32 CounterCounter = 1;
     static r32 UpdateCounter = 0.0f;
-    static v3 PlayerPos = {0};
-    UpdateCounter += Input->dTimeMS / 1000;
-    if ((UpdateCounter / UpdateFreq*CounterCounter) >= 1.0f)
-    {
-        CounterCounter++;
-        PlayerPos.Z -= 0.01f;
-        printf("CameraP.X: %f, CameraP.Y: %f, CameraP.Z: %f\n", GameState->CameraP.X,GameState->CameraP.Y,GameState->CameraP.Z);
-    }
+    static v3 PlayerPos = {0.0f, -1.0f, 0.0f};
 
     glAPI->ClearColor(0, 0, 0, 1);
     glAPI->Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -201,9 +195,19 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     glAPI->UseProgram(GameState->ShaderProgram);
 
     v3 CameraTarget = Vec3(0.0f, 0.0f, 0.0f);
-    v3 Up = Vec3(cosf(UpdateCounter), sinf(UpdateCounter), 0.0f);
+    v3 Up = Vec3(0.0f, 1.0f, 0.0f);
 
-    m4 Model = Translate(PlayerPos);
+    m3 RotationMat3 = Rotate(10, Vec3(0.0f, 1.0f, 0.0f));
+
+	m4 Model = Mat4(1.0f);
+    Model = Translate(Model, PlayerPos);
+	for (u8 row=0; row < 3; ++row)
+	{
+        for (u8 col=0; col < 3; ++col)
+        {
+            Model.Elements[col][row] *= RotationMat3.Elements[col][row];
+        }
+	}
     m4 View = LookAt(GameState->CameraP, CameraTarget, Up);
     m4 Projection = Perspective(ToRadians(90.0f), (r32)640.0f / (r32)480.0f, 0.1f, 100.0f);
 

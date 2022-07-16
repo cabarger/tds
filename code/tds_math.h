@@ -150,6 +150,11 @@ struct m4
    }
 };
 
+struct m3
+{
+   r32 Elements[3][3];
+};
+
 /*
 m4
 InverseM4(m4 Input)
@@ -157,6 +162,79 @@ InverseM4(m4 Input)
     // TODO(caleb): write me
 }
 */
+
+inline m3
+Mat3(r32 Value)
+{
+    m3 Result;
+    for (u8 RowIndex=0;
+         RowIndex < 3;
+         ++RowIndex)
+    {
+        for (u8 ColumnIndex=0;
+             ColumnIndex < 3;
+             ++ColumnIndex)
+        {
+            if (ColumnIndex == RowIndex)
+            {
+                Result.Elements[ColumnIndex][RowIndex] = Value;
+            }
+            else
+            {
+                Result.Elements[ColumnIndex][RowIndex] = 0.0f;
+            }
+        }
+    }
+    return (Result);
+}
+
+inline v3
+MultiplyMat3ByVec3(m3 Matrix, v3 Vector)
+{
+    v3 Result;
+
+    for (u8 RowIndex=0;
+         RowIndex < 3;
+         ++RowIndex)
+    {
+        u32 Sum = 0;
+        for (u8 ColumnIndex=0;
+             ColumnIndex < 3;
+             ++ColumnIndex)
+        {
+            Sum += Matrix.Elements[ColumnIndex][RowIndex] * Vector.Elements[ColumnIndex];
+        }
+        Result.Elements[RowIndex] = Sum;
+    }
+    return (Result);
+}
+
+
+inline m3
+Rotate(r32 Angle, v3 Axis)
+{
+    m3 Result = Mat3(1.0f);
+
+    Axis = NormalizeV3(Axis);
+
+    float SinTheta = sinf(ToRadians(Angle));
+    float CosTheta = cosf(ToRadians(Angle));
+    float CosValue = 1.0f - CosTheta;
+
+    Result.Elements[0][0] = (Axis.X * Axis.X * CosValue) + CosTheta;
+    Result.Elements[0][1] = (Axis.X * Axis.Y * CosValue) + (Axis.Z * SinTheta);
+    Result.Elements[0][2] = (Axis.X * Axis.Z * CosValue) - (Axis.Y * SinTheta);
+
+    Result.Elements[1][0] = (Axis.Y * Axis.X * CosValue) - (Axis.Z * SinTheta);
+    Result.Elements[1][1] = (Axis.Y * Axis.Y * CosValue) + CosTheta;
+    Result.Elements[1][2] = (Axis.Y * Axis.Z * CosValue) + (Axis.X * SinTheta);
+
+    Result.Elements[2][0] = (Axis.Z * Axis.X * CosValue) + (Axis.Y * SinTheta);
+    Result.Elements[2][1] = (Axis.Z * Axis.Y * CosValue) - (Axis.X * SinTheta);
+    Result.Elements[2][2] = (Axis.Z * Axis.Z * CosValue) + CosTheta;
+
+    return (Result);
+}
 
 inline m4
 Mat4(r32 Value)
@@ -184,9 +262,9 @@ Mat4(r32 Value)
 }
 
 inline m4
-Translate(v3 Input)
+Translate(m4 Model, v3 Input)
 {
-    m4 Result = Mat4(1.0f);
+    m4 Result = Model;
 
     Result.Elements[3][0] = Input.X;
     Result.Elements[3][1] = Input.Y;
