@@ -74,6 +74,47 @@ LoadOBJ(const char *Filename, debug_loaded_obj *OBJOut,
     DEBUGPlatformFreeFileMemory(ReadResult.Contents);
 }
 
+
+/***
+* Draw a grid on the xz plane
+*/
+void
+DrawGrid(r32 Size, r32 Step)
+{
+    // disable lighting
+    glDisable(GL_LIGHTING);
+
+    glBegin(GL_LINES);
+
+    for(r32 LineIndex = Step;
+        LineIndex <= Size;
+        LineIndex += Step)
+    {
+        glVertex3f(-Size, 0,  LineIndex);   // lines parallel to X-axis
+        glVertex3f( Size, 0,  LineIndex);
+        glVertex3f(-Size, 0, -LineIndex);   // lines parallel to X-axis
+        glVertex3f( Size, 0, -LineIndex);
+
+        glVertex3f( LineIndex, 0, -Size);   // lines parallel to Z-axis
+        glVertex3f( LineIndex, 0,  Size);
+        glVertex3f(-LineIndex, 0, -Size);   // lines parallel to Z-axis
+        glVertex3f(-LineIndex, 0,  Size);
+    }
+
+    // x-axis
+    glVertex3f(-Size, 0, 0);
+    glVertex3f( Size, 0, 0);
+
+    // z-axis
+    glVertex3f(0, 0, -Size);
+    glVertex3f(0, 0,  Size);
+
+    glEnd();
+
+    // enable lighting back
+    glEnable(GL_LIGHTING);
+}
+
 extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 {
     game_state *GameState = (game_state *)Memory->Permanent.Base;
@@ -162,32 +203,39 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         glAPI->DeleteShader(VertexShader);
         glAPI->DeleteShader(FragmentShader);
 
-        GameState->CameraP = Vec3(0, 0, -3);
+        GameState->CameraP = Vec3(0.0f, 4.0f, 3.0f);
         Memory->IsInitialized = true;
     }
+
+    static v3 PlayerP = {0.0f, 0.0f, 0.0f};
 
     controller Controller = Input->Controller;
     if (!Controller.Right.IsDown && Controller.Right.WasDown)
     {
-        GameState->CameraP.X -= 1.0f;
+       // GameState->CameraP.X += 1.0f;
+        PlayerP.X += 1.0f;
     }
     if (!Controller.Left.IsDown && Controller.Left.WasDown)
     {
-        GameState->CameraP.X += 1.0f;
+     //   GameState->CameraP.X -= 1.0f;
+       PlayerP.X -= 1.0f;
     }
     if (!Controller.Up.IsDown && Controller.Up.WasDown)
     {
-        GameState->CameraP.Z += 1.0f;
+      //  GameState->CameraP.Z -= 1.0f;
+        PlayerP.Z -= 1.0f;
     }
     if (!Controller.Down.IsDown && Controller.Down.WasDown)
     {
-        GameState->CameraP.Z -= 1.0f;
+       // GameState->CameraP.Z += 1.0f;
+        PlayerP.Z += 1.0f;
     }
+
+    printf("%f, %f, %f\n", PlayerP.X, PlayerP.Y, PlayerP.Z);
 
     r32 UpdateFreq = 1.0f;
     static u32 CounterCounter = 1;
     static r32 UpdateCounter = 0.0f;
-    static v3 PlayerPos = {0.0f, -1.0f, 0.0f};
 
     glAPI->ClearColor(0, 0, 0, 1);
     glAPI->Clear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -195,19 +243,17 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     glAPI->UseProgram(GameState->ShaderProgram);
 
     v3 CameraTarget = Vec3(0.0f, 0.0f, 0.0f);
+//    v3 CameraTarget = PlayerP;
     v3 Up = Vec3(0.0f, 1.0f, 0.0f);
 
-    m3 RotationMat3 = Rotate(10, Vec3(0.0f, 1.0f, 0.0f));
-
 	m4 Model = Mat4(1.0f);
-    Model = Translate(Model, PlayerPos);
-	for (u8 row=0; row < 3; ++row)
-	{
-        for (u8 col=0; col < 3; ++col)
-        {
-            Model.Elements[col][row] *= RotationMat3.Elements[col][row];
-        }
-	}
+    Model = Translate(Model, PlayerP);
+/*
+    GameState->CameraP.Y = PlayerP.Y + 5.f;
+    GameState->CameraP.Z = PlayerP.Z + 3.0f;
+    GameState->CameraP.X = PlayerP.X;
+*/
+
     m4 View = LookAt(GameState->CameraP, CameraTarget, Up);
     m4 Projection = Perspective(ToRadians(90.0f), (r32)640.0f / (r32)480.0f, 0.1f, 100.0f);
 
@@ -221,7 +267,12 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     glAPI->UniformMatrix4fv(ProjectionLoc, 1, GL_FALSE, &Projection.Elements[0][0]);
 
     glAPI->BindVertexArray(GameState->VAO);
+
     glAPI->DrawArrays(GL_TRIANGLES, 0, GameState->PlayerOBJ.VertexCount);
+
+    Model = Mat4(1.0f);
+    glAPI->UniformMatrix4fv(ModelLoc, 1, GL_FALSE, &Model.Elements[0][0]);
+    DrawGrid(16, 2);
 
     glAPI->Flush();
 

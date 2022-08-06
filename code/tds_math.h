@@ -3,6 +3,8 @@
 #include "tds_types.h"
 #include <math.h>
 
+#include  <stdio.h>
+
 #define TDS_PI32 3.14159265359f
 
 inline r32
@@ -266,41 +268,36 @@ Translate(m4 Model, v3 Input)
 {
     m4 Result = Model;
 
-    Result.Elements[3][0] = Input.X;
-    Result.Elements[3][1] = Input.Y;
-    Result.Elements[3][2] = Input.Z;
+    Result.Elements[3][0] = -Input.X;
+    Result.Elements[3][1] = -Input.Y;
+    Result.Elements[3][2] = -Input.Z;
 
     return(Result);
 }
 
 inline m4
-LookAt(v3 Eye, v3 Center, v3 Up)
+LookAt(v3 Eye, v3 Target, v3 UpDirection)
 {
-    m4 Result;
+    m4 Result = Mat4(1.0f);
 
-    v3 CameraFront = NormalizeV3(Center - Eye);
-    v3 CameraRight = NormalizeV3(Cross(CameraFront, Up));
-    v3 CameraUp = Cross(CameraRight, CameraFront);
+    v3 Forward = NormalizeV3(Eye - Target);
+    v3 Left = NormalizeV3(Cross(UpDirection, Forward));
+    v3 Up = Cross(Forward, Left);
+//    UpDirection = NormalizeV3(UpDirection);
 
-    Result.Elements[0][0] = CameraRight.X;
-    Result.Elements[0][1] = CameraUp.X;
-    Result.Elements[0][2] = -CameraFront.X;
-    Result.Elements[0][3] = 0.0f;
+    Result.Elements[0][0] = Left.X;
+    Result.Elements[0][1] = Up.X;
+    Result.Elements[0][2] = Forward.X;
+    Result.Elements[1][0] = Left.Y;
+    Result.Elements[1][1] = Up.Y;
+    Result.Elements[1][2] = Forward.Y;
+    Result.Elements[2][0] = Left.Z;
+    Result.Elements[2][1] = Up.Z;
+    Result.Elements[2][2] = Forward.Z;
 
-    Result.Elements[1][0] = CameraRight.Y;
-    Result.Elements[1][1] = CameraUp.Y;
-    Result.Elements[1][2] = -CameraFront.Y;
-    Result.Elements[1][3] = 0.0f;
-
-    Result.Elements[2][0] = CameraRight.Z;
-    Result.Elements[2][1] = CameraUp.Z;
-    Result.Elements[2][2] = -CameraFront.Z;
-    Result.Elements[2][3] = 0.0f;
-
-    Result.Elements[3][0] = -(CameraRight*Eye);
-    Result.Elements[3][1] = -(CameraUp*Eye);
-    Result.Elements[3][2] = CameraFront*Eye;
-    Result.Elements[3][3] = 1.0f;
+    Result.Elements[3][0] = -Left.X * Eye.X - Left.Y * Eye.Y - Left.Z * Eye.Z;
+    Result.Elements[3][1] = -Up.X * Eye.X - Up.Y * Eye.Y - Up.Z * Eye.Z;
+    Result.Elements[3][2] = -Forward.X * Eye.X - Forward.Y * Eye.Y - Forward.Z * Eye.Z;
 
     return (Result);
 }
