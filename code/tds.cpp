@@ -3,9 +3,82 @@
 #include <stdio.h>
 #include <cstring>
 
+struct png_chunk_header
+{
+	u32 Length;
+    u32 ChunkType;
+};
+
+struct png_ihdr_chunk
+{
+    u32 Width;
+    u32 Height;
+    u8 BitDepth;
+    u8 ColorType;
+    u8 CompressionMethod;
+    u8 FilterMethod;
+    u8 InterlaceMethod;
+}; //__attribute__((packed));
+
+struct png_chunk_footer
+{
+    u32 Crc;
+};
+
+struct debug_loaded_png
+{
+    int Delme;
+};
+
+inline u32
+RevByteOrderU32(u32 *Input)
+{
+    u8 Result[4];
+    memcpy(Result, Input,  4);
+
+    u8 Tmp = Result[0];
+    Result[0] = Result[3];
+    Result[3] = Tmp;
+
+    Tmp = Result[1];
+    Result[1] = Result[2];
+    Result[2] = Tmp;
+
+    return (*(u32 *)Result);
+}
+
 void
-LoadOBJ(const char *Filename, debug_loaded_obj *OBJOut,
-        debug_platform_read_entire_file *ReadEntireFile, debug_platform_free_file_memory *DEBUGPlatformFreeFileMemory)
+DEBUGLoadPng(const char *Filename, debug_loaded_png *PngOut,
+             debug_platform_read_entire_file *ReadEntireFile, debug_platform_free_file_memory *FreeFileMemory)
+{
+    // TODO(caleb): check system enideaness
+
+    debug_read_file_result ReadResult = ReadEntireFile(Filename);
+
+/***
+* PNG HEADER ( 8 bytes )
+* -----------------------
+* 1 byte - Has the high bit set to detect transmission systems that do not support 8-bit data and to reduce the chance that a text file is mistakenly interpreted as a PNG, or vice versa.
+* 3 bytes - In ASCII, the letters PNG, allowing a person to identify the format easily if it is viewed in a text editor.
+* 2 bytes - A DOS-style line ending (CRLF) to detect DOS-Unix line ending conversion of the data.
+* 1 byte -  Stops display of the file under DOS when the command type has been used—the end-of-file character.
+* 1 byte - A Unix-style line ending (LF) to detect Unix-DOS line ending conversion.
+*/
+    png_chunk_header FirstChunkHeader;
+    memcpy(&FirstChunkHeader, ReadResult.Contents + sizeof(u64), sizeof(png_chunk_header));
+
+    png_ihdr_chunk ChunkData;
+    memcpy(&ChunkData, ReadResult.Contents + sizeof(u64) + sizeof(png_chunk_header), sizeof(png_ihdr_chunk));
+
+    printf("Width: %u\n", RevByteOrderU32(&ChunkData.Width));
+    printf("Height: %u\n", RevByteOrderU32(&ChunkData.Height));
+
+    FreeFileMemory(ReadResult.Contents);
+}
+
+void
+DEBUGLoadObj(const char *Filename, debug_loaded_obj *OBJOut,
+        debug_platform_read_entire_file *ReadEntireFile, debug_platform_free_file_memory *FreeFileMemory)
 {
     debug_read_file_result ReadResult = ReadEntireFile(Filename);
 
@@ -71,7 +144,7 @@ LoadOBJ(const char *Filename, debug_loaded_obj *OBJOut,
             ReadingComment = false;
         }
     }
-    DEBUGPlatformFreeFileMemory(ReadResult.Contents);
+    FreeFileMemory(ReadResult.Contents);
 }
 
 
@@ -124,7 +197,10 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         glAPI->Enable(GL_DEPTH_TEST);
 
         memset(&GameState->PlayerOBJ, 0, sizeof(game_state));
-        LoadOBJ("./assets/triangle.obj", &GameState->PlayerOBJ, Memory->DEBUGPlatformReadEntireFile, Memory->DEBUGPlatformFreeFileMemory);
+        DEBUGLoadObj("./assets/triangle.obj", &GameState->PlayerOBJ, Memory->DEBUGPlatformReadEntireFile, Memory->DEBUGPlatformFreeFileMemory);
+
+        debug_loaded_png LoadedPng;
+        DEBUGLoadPng("./assets/pro.png", &LoadedPng, Memory->DEBUGPlatformReadEntireFile, Memory->DEBUGPlatformFreeFileMemory);
 
         glAPI->GenVertexArrays(1, &GameState->VAO);
         glAPI->GenBuffers(1, &GameState->VBO);
@@ -203,7 +279,7 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         glAPI->DeleteShader(VertexShader);
         glAPI->DeleteShader(FragmentShader);
 
-        GameState->CameraP = Vec3(0.0f, 4.0f, 3.0f);
+        GameState->CameraP = Vec3(0.0f, 5.0f, 1.0f);
         Memory->IsInitialized = true;
     }
 
@@ -231,7 +307,6 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
         PlayerP.Z += 1.0f;
     }
 
-    printf("%f, %f, %f\n", PlayerP.X, PlayerP.Y, PlayerP.Z);
 
     r32 UpdateFreq = 1.0f;
     static u32 CounterCounter = 1;
@@ -248,11 +323,13 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
 
 	m4 Model = Mat4(1.0f);
     Model = Translate(Model, PlayerP);
-/*
-    GameState->CameraP.Y = PlayerP.Y + 5.f;
-    GameState->CameraP.Z = PlayerP.Z + 3.0f;
+
+    GameState->CameraP.Y = PlayerP.Y + 7.f;
+    GameState->CameraP.Z = PlayerP.Z + 1.0f;
     GameState->CameraP.X = PlayerP.X;
-*/
+
+    //printf("%f, %f, %f\n", PlayerP.X, PlayerP.Y, PlayerP.Z);
+    //printf("%f, %f, %f\n", GameState->CameraP.X, GameState->CameraP.Y, GameState->CameraP.Z);
 
     m4 View = LookAt(GameState->CameraP, CameraTarget, Up);
     m4 Projection = Perspective(ToRadians(90.0f), (r32)640.0f / (r32)480.0f, 0.1f, 100.0f);
@@ -267,10 +344,8 @@ extern "C" GAME_UPDATE_AND_RENDER(GameUpdateAndRender)
     glAPI->UniformMatrix4fv(ProjectionLoc, 1, GL_FALSE, &Projection.Elements[0][0]);
 
     glAPI->BindVertexArray(GameState->VAO);
-
     glAPI->DrawArrays(GL_TRIANGLES, 0, GameState->PlayerOBJ.VertexCount);
 
-    Model = Mat4(1.0f);
     glAPI->UniformMatrix4fv(ModelLoc, 1, GL_FALSE, &Model.Elements[0][0]);
     DrawGrid(16, 2);
 
