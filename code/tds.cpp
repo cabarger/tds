@@ -3,13 +3,18 @@
 #include <stdio.h>
 #include <cstring>
 
-struct png_chunk_header
+// Png spec
+// http://www.libpng.org/pub/png/spec/1.2/
+
+struct png_chunk
 {
 	u32 Length;
-    u32 ChunkType;
+    u32 Type;
+    u8 *Data;
+    u32 CRC;
 };
 
-struct png_ihdr_chunk
+struct png_data_ihdr
 {
     u32 Width;
     u32 Height;
@@ -20,58 +25,129 @@ struct png_ihdr_chunk
     u8 InterlaceMethod;
 }; //__attribute__((packed));
 
-struct png_chunk_footer
-{
-    u32 Crc;
-};
-
 struct debug_loaded_png
 {
     int Delme;
 };
 
-inline u32
-RevByteOrderU32(u32 *Input)
+inline bool
+RunningLittleEnidean()
 {
-    u8 Result[4];
-    memcpy(Result, Input,  4);
+    bool Result = false;
 
-    u8 Tmp = Result[0];
-    Result[0] = Result[3];
-    Result[3] = Tmp;
+    u8 TestBytes[4] = {};
+    *TestBytes = 1;
+    if (*(u32 *)TestBytes == 1)
+    {
+        Result = true;
+    }
 
-    Tmp = Result[1];
-    Result[1] = Result[2];
-    Result[2] = Tmp;
+    return (Result);
+}
 
-    return (*(u32 *)Result);
+void
+NetOrderU32(u32 *U32Out)
+{
+    if (RunningLittleEnidean())
+    {
+        u8 *Result = (u8 *)U32Out;
+
+        u8 Tmp = Result[0];
+        Result[0] = Result[3];
+        Result[3] = Tmp;
+
+        Tmp = Result[1];
+        Result[1] = Result[2];
+        Result[2] = Tmp;
+    }
 }
 
 void
 DEBUGLoadPng(const char *Filename, debug_loaded_png *PngOut,
              debug_platform_read_entire_file *ReadEntireFile, debug_platform_free_file_memory *FreeFileMemory)
 {
-    // TODO(caleb): check system enideaness
-
     debug_read_file_result ReadResult = ReadEntireFile(Filename);
-
 /***
-* PNG HEADER ( 8 bytes )
-* -----------------------
+* ----------------------------------
+* | PNG file signature ( 8 bytes ) |
+* ----------------------------------
 * 1 byte - Has the high bit set to detect transmission systems that do not support 8-bit data and to reduce the chance that a text file is mistakenly interpreted as a PNG, or vice versa.
 * 3 bytes - In ASCII, the letters PNG, allowing a person to identify the format easily if it is viewed in a text editor.
 * 2 bytes - A DOS-style line ending (CRLF) to detect DOS-Unix line ending conversion of the data.
 * 1 byte -  Stops display of the file under DOS when the command type has been used—the end-of-file character.
 * 1 byte - A Unix-style line ending (LF) to detect Unix-DOS line ending conversion.
 */
-    png_chunk_header FirstChunkHeader;
-    memcpy(&FirstChunkHeader, ReadResult.Contents + sizeof(u64), sizeof(png_chunk_header));
+    // NOTE(kroney): Png is stored in network byte order ( big enidean ).
+    bool IsLittleEnidean = RunningLittleEnidean();
 
-    png_ihdr_chunk ChunkData;
-    memcpy(&ChunkData, ReadResult.Contents + sizeof(u64) + sizeof(png_chunk_header), sizeof(png_ihdr_chunk));
+    png_chunk Chunk;
+    u8 ChunkDataBuffer[256];
+    Chunk.Data = ChunkDataBuffer;
 
-    printf("Width: %u\n", RevByteOrderU32(&ChunkData.Width));
-    printf("Height: %u\n", RevByteOrderU32(&ChunkData.Height));
+    u32 FileOffset = 0;
+    memcpy(&Chunk.Length, ReadResult.Contents + FileOffset, sizeof(u32));
+    FileOffset += sizeof(u64);
+
+    memcpy(&Chunk.Type, ReadResult.Contents + FileOffset, sizeof(u32));
+    FileOffset += sizeof(u32);
+
+    NetOrderU32(&Chunk.Length);
+    memcpy(Chunk.Data, ReadResult.Contents + FileOffset  + sizeof(u32), Chunk.Length);
+    FileOffset += sizeof(u32);
+
+    memcpy(&Chunk.CRC, ReadResult.Contents + FileOffset + Chunk.Length, sizeof(u32));
+    FileOffset += Chunk.Length;
+
+    NetOrderU32(&Chunk.Type);
+    if (Chunk.Type == 0x49484452) // first chunk is allways ihdr
+    {
+        png_data_ihdr *IHDRChunk = (png_data_ihdr *)Chunk.Data;
+
+        NetOrderU32(&IHDRChunk->Width);
+        u32 ImageWidth = IHDRChunk->Width;
+
+        NetOrderU32(&IHDRChunk->Height);
+        u32 ImageHeight = IHDRChunk->Height;
+
+        u8 BitDepth = IHDRChunk->BitDepth;
+        u8 ColorType = IHDRChunk->ColorType;
+/*
+   Color    Allowed    Interpretation
+   Type    Bit Depths
+
+   0       1,2,4,8,16  Each pixel is a grayscale sample.
+
+   2       8,16        Each pixel is an R,G,B triple.
+
+   3       1,2,4,8     Each pixel is a palette index;
+                       a PLTE chunk must appear.
+
+   4       8,16        Each pixel is a grayscale sample,
+                       followed by an alpha sample.
+
+   6       8,16        Each pixel is an R,G,B triple,
+                       followed by an alpha sample.
+*/
+        if ((BitDepth == 8) &&
+            (ColorType == 6))
+        {
+            // Read idat *hopefully*
+            u8 BytesPerPixel = 4;
+            u8 ImageDataSize = BytesPerPixel*ImageWidth*ImageHeight;
+
+            memcpy(&Chunk.Length, ReadResult.Contents + FileOffset + sizeof(u34), sizeof(u32));
+            FileOffset += sizeof(u32);
+
+            memcpy(&Chunk.Type, ReadResult.Contents + FileOffset + sizeof(u32), sizeof(u32));
+            FileOffset += sizeof(u32);
+/*
+            NetOrderU32(&Chunk.Length);
+            memcpy(Chunk.Data
+
+            NetOrderU32(&Chunk.Type);
+*/
+        }
+    }
 
     FreeFileMemory(ReadResult.Contents);
 }
